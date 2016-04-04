@@ -1,0 +1,4 @@
+*.pp
+/dist/
+/eucalyptus.if
+/tmp/

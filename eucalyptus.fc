@@ -1,0 +1,43 @@
+# Copyright (c) 2016 Hewlett Packard Enterprise Development LP
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+/dev/shm/sem\.eucalyptus.*                         -- gen_context(system_u:object_r:eucalyptus_tmpfs_t,s0)
+/etc/eucalyptus(/.*)?                                 gen_context(system_u:object_r:eucalyptus_conf_t,s0)
+/etc/eucalyptus/nc-hooks(/.*)?                     -- gen_context(system_u:object_r:bin_t,s0)
+/tmp/ebt_filter_file-.*                            -- gen_context(system_u:object_r:eucalyptus_tmp_t,s0)
+/tmp/ebt_nat_file-.*                               -- gen_context(system_u:object_r:eucalyptus_tmp_t,s0)
+/tmp/euca-global-net-.*                            -- gen_context(system_u:object_r:eucalyptus_tmp_t,s0)
+/tmp/ipt_file-.*                                   -- gen_context(system_u:object_r:eucalyptus_tmp_t,s0)
+/usr/lib/eucalyptus/euca_mountwrap                 -- gen_context(system_u:object_r:bin_t,s0)
+/usr/lib/eucalyptus/euca_rootwrap                  -- gen_context(system_u:object_r:bin_t,s0)
+/usr/lib/systemd/system/eucalyptus-cloud.service   -- gen_context(system_u:object_r:eucalyptus_cloud_unit_file_t,s0)
+/usr/lib/systemd/system/eucalyptus-cluster.service -- gen_context(system_u:object_r:eucalyptus_cluster_unit_file_t,s0)
+/usr/lib/systemd/system/eucalyptus-node.service    -- gen_context(system_u:object_r:eucalyptus_node_unit_file_t,s0)
+/usr/lib/systemd/system/eucanetd.service           -- gen_context(system_u:object_r:eucalyptus_eucanetd_unit_file_t,s0)
+/usr/sbin/eucalyptus-cloud                         -- gen_context(system_u:object_r:eucalyptus_cloud_exec_t,s0)
+/usr/sbin/eucalyptus-cluster                       -- gen_context(system_u:object_r:eucalyptus_cluster_exec_t,s0)
+/usr/sbin/eucalyptus-node                          -- gen_context(system_u:object_r:eucalyptus_node_exec_t,s0)
+/usr/sbin/eucanetd                                 -- gen_context(system_u:object_r:eucalyptus_eucanetd_exec_t,s0)
+/var/lib/eucalyptus(/.*)?                             gen_context(system_u:object_r:eucalyptus_var_lib_t,s0)
+
+# This entire directory must be virt_image_t because kernel and ramdisk
+# file names are not fixed, preventing us from creating file name-based
+# type transitions for them.
+/var/lib/eucalyptus/instances(/.*)?                   gen_context(system_u:object_r:virt_image_t,s0)
+
+/var/log/eucalyptus(/.*)?                             gen_context(system_u:object_r:eucalyptus_log_t,s0)
+/var/run/eucalyptus(/.*)?                             gen_context(system_u:object_r:eucalyptus_var_run_t,s0)
+/var/run/eucalyptus/net(/.*)?                         gen_context(system_u:object_r:dhcpd_state_t,s0)
+/var/run/eucalyptus/net/euca-dhcp.conf             -- gen_context(system_u:object_r:dhcp_etc_t,s0)

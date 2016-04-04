@@ -1,0 +1,454 @@
+# Copyright (c) 2016 Hewlett Packard Enterprise Development LP
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+policy_module(eucalyptus, 0.1.0)
+
+gen_require(`
+    attribute fixed_disk_raw_read;
+    attribute fixed_disk_raw_write;
+    type device_t;
+    type dhcp_etc_t;
+    type dhcpd_state_t;
+    type dhcpd_t;
+    type fixed_disk_device_t;
+    type fsadm_exec_t;
+    type ifconfig_t;
+    type iptables_t;
+    type mount_exec_t;
+    type netutils_t;
+    type syslogd_var_run_t;
+    type tgtd_t;
+    type tmp_t;
+    type usr_t;
+    type var_lib_t;
+    type virt_image_t;
+')
+
+########################################
+#
+# Declarations
+#
+
+# Booleans
+
+## <desc>
+##	<p>
+##	Allow eucalyptus to run as a storage controller
+##	</p>
+## </desc>
+gen_tunable(eucalyptus_storage_controller, false)
+
+# Process types
+
+attribute eucalyptus_domain;
+attribute eucalyptus_unit_file;
+
+eucalyptus_domain_template(eucanetd)
+
+eucalyptus_domain_template(node)
+
+eucalyptus_domain_template(cluster)
+
+eucalyptus_domain_template(cloud)
+typeattribute eucalyptus_cloud_t fixed_disk_raw_read;  # storage controller
+typeattribute eucalyptus_cloud_t fixed_disk_raw_write;  # storage controller
+
+# File types
+
+type eucalyptus_conf_t;
+files_config_file(eucalyptus_conf_t)
+
+type eucalyptus_log_t;
+logging_log_file(eucalyptus_log_t)
+
+type eucalyptus_tmp_t;
+files_tmp_file(eucalyptus_tmp_t)
+
+type eucalyptus_tmpfs_t;
+files_tmpfs_file(eucalyptus_tmpfs_t)
+
+type eucalyptus_var_lib_t;
+files_type(eucalyptus_var_lib_t)
+
+type eucalyptus_var_run_t;
+files_pid_file(eucalyptus_var_run_t)
+
+########################################
+#
+# eucalyptus_cloud local policy
+#
+
+allow eucalyptus_cloud_t self:capability { chown fowner kill net_raw setgid setuid sys_resource };
+allow eucalyptus_cloud_t self:process { execmem setcap setpgid setrlimit };  # execmem is for java
+allow eucalyptus_cloud_t self:netlink_route_socket create_netlink_socket_perms;
+allow eucalyptus_cloud_t self:rawip_socket create_socket_perms;
+allow eucalyptus_cloud_t self:tcp_socket create_stream_socket_perms;
+allow eucalyptus_cloud_t self:udp_socket create_socket_perms;
+allow eucalyptus_cloud_t self:unix_stream_socket connectto;  # pg_ctl
+
+dontaudit eucalyptus_cloud_t self:capability fsetid;
+ifdef(`hide_broken_symptoms',`
+    dontaudit eucalyptus_cloud_t usr_t:dir setattr;  # https://eucalyptus.atlassian.net/browse/EUCA-12150
+    dontaudit eucalyptus_cloud_t usr_t:file setattr;  # https://eucalyptus.atlassian.net/browse/EUCA-12150
+    dontaudit eucalyptus_cloud_t eucalyptus_conf_t:dir { setattr write };  # https://eucalyptus.atlassian.net/browse/EUCA-12150
+    dontaudit eucalyptus_cloud_t eucalyptus_conf_t:file setattr;  # https://eucalyptus.atlassian.net/browse/EUCA-12150
+')
+
+list_dirs_pattern(eucalyptus_cloud_t, eucalyptus_conf_t, eucalyptus_conf_t)
+read_files_pattern(eucalyptus_cloud_t, eucalyptus_conf_t, eucalyptus_conf_t)
+
+manage_files_pattern(eucalyptus_cloud_t, eucalyptus_log_t, eucalyptus_log_t)
+logging_log_filetrans(eucalyptus_cloud_t, eucalyptus_log_t, { dir file lnk_file })
+
+manage_dirs_pattern(eucalyptus_cloud_t, eucalyptus_var_lib_t, eucalyptus_var_lib_t)
+manage_files_pattern(eucalyptus_cloud_t, eucalyptus_var_lib_t, eucalyptus_var_lib_t)
+manage_lnk_files_pattern(eucalyptus_cloud_t, eucalyptus_var_lib_t, eucalyptus_var_lib_t)
+manage_sock_files_pattern(eucalyptus_cloud_t, eucalyptus_var_lib_t, eucalyptus_var_lib_t)  # postgres
+
+manage_dirs_pattern(eucalyptus_cloud_t, eucalyptus_var_run_t, eucalyptus_var_run_t)
+manage_files_pattern(eucalyptus_cloud_t, eucalyptus_var_run_t, eucalyptus_var_run_t)
+files_pid_filetrans(eucalyptus_cloud_t, eucalyptus_var_run_t, file)
+
+files_tmp_filetrans(eucalyptus_cloud_t, eucalyptus_tmp_t, { dir file })
+manage_files_pattern(eucalyptus_cloud_t, tmp_t, eucalyptus_tmp_t)
+manage_dirs_pattern(eucalyptus_cloud_t, eucalyptus_tmp_t, eucalyptus_tmp_t)
+
+manage_files_pattern(eucalyptus_cloud_t, tmpfs_t, eucalyptus_tmpfs_t)
+fs_tmpfs_filetrans(eucalyptus_cloud_t, eucalyptus_tmpfs_t, { dir file lnk_file sock_file fifo_file })
+
+
+kernel_read_network_state(eucalyptus_cloud_t)  # /proc/net/if_inet6
+kernel_read_system_state(eucalyptus_cloud_t)
+
+corecmd_exec_bin(eucalyptus_cloud_t)
+
+corenet_tcp_sendrecv_generic_port(eucalyptus_cloud_t)
+corenet_udp_sendrecv_generic_port(eucalyptus_cloud_t)
+corenet_tcp_connect_generic_port(eucalyptus_cloud_t)
+corenet_raw_bind_generic_node(eucalyptus_cloud_t)
+corenet_tcp_bind_generic_node(eucalyptus_cloud_t)
+corenet_tcp_bind_generic_port(eucalyptus_cloud_t)
+corenet_udp_bind_generic_node(eucalyptus_cloud_t)
+corenet_udp_bind_generic_port(eucalyptus_cloud_t)
+corenet_tcp_bind_dns_port(eucalyptus_cloud_t)
+corenet_udp_bind_dns_port(eucalyptus_cloud_t)
+corenet_tcp_connect_osapi_compute_port(eucalyptus_cloud_t)  # port 8774
+
+dev_read_rand(eucalyptus_cloud_t)
+dev_read_sysfs(eucalyptus_cloud_t)  # /sys/device/system/cpu
+
+domain_use_interactive_fds(eucalyptus_cloud_t)  # get output from clcadmin-initialize-cloud
+
+fs_getattr_tmpfs(eucalyptus_cloud_t)
+fs_getattr_xattr_fs(eucalyptus_cloud_t)
+
+term_use_all_inherited_ptys(eucalyptus_cloud_t)  # get output from clcadmin-initialize-cloud
+term_use_all_inherited_ttys(eucalyptus_cloud_t)  # get output from clcadmin-initialize-cloud
+
+auth_read_passwd(eucalyptus_cloud_t)
+
+miscfiles_read_generic_certs(eucalyptus_cloud_t)  # /etc/pki/tls/openssl.cnf for postgres
+
+sysnet_dns_name_resolve(eucalyptus_cloud_t)
+sysnet_read_config(eucalyptus_cloud_t)
+
+tunable_policy(`eucalyptus_storage_controller', `
+    allow eucalyptus_cloud_t self:capability { dac_override dac_read_search };  # for snapshots
+
+    rw_blk_files_pattern(eucalyptus_cloud_t, device_t, fixed_disk_device_t)
+
+    dev_list_all_dev_nodes(eucalyptus_cloud_t)
+
+    fstools_domtrans(eucalyptus_cloud_t)  # overlaymanager
+
+    lvm_domtrans(eucalyptus_cloud_t)  # dasmanager
+    lvm_read_metadata(eucalyptus_cloud_t)  # dasmanager, mainly so audit2why yields results
+
+    tgtd_stream_connect(eucalyptus_cloud_t)  # dasmanager, overlaymanager
+
+    # Get rid of all of these when EUCA-12069 is fixed
+    # https://eucalyptus.atlassian.net/browse/EUCA-12069
+    ps_process_pattern(eucalyptus_cloud_t, tgtd_t)
+    systemd_config_generic_services(eucalyptus_cloud_t)
+    ifdef(`hide_broken_symptoms',`
+        dontaudit eucalyptus_cloud_t syslogd_var_run_t:dir read;  # systemctl status tgtd.service
+        dontaudit eucalyptus_cloud_t syslogd_var_run_t:file read_file_perms;
+    ')
+')
+
+optional_policy(`
+    postgresql_exec(eucalyptus_cloud_t)
+')
+
+optional_policy(`
+    sysnet_domtrans_ifconfig(eucalyptus_cloud_t)  # Internets.java uses /sbin/ip to find the default route
+')
+
+########################################
+#
+# eucalyptus_cluster local policy
+#
+
+allow eucalyptus_cluster_t self:capability { dac_override kill setgid setuid };
+allow eucalyptus_cluster_t self:process { getpgid setpgid };
+allow eucalyptus_cluster_t self:fifo_file rw_fifo_file_perms;
+allow eucalyptus_cluster_t self:netlink_route_socket create_netlink_socket_perms;
+allow eucalyptus_cluster_t self:sem create_sem_perms;
+allow eucalyptus_cluster_t self:tcp_socket create_stream_socket_perms;
+allow eucalyptus_cluster_t self:udp_socket create_socket_perms;
+
+dontaudit eucalyptus_cluster_t self:process setfscreate;  # sed wants to unnecessarily relabel httpd.conf
+dontaudit eucalyptus_cluster_t fsadm_exec_t:file getattr;  # https://eucalyptus.atlassian.net/browse/EUCA-12148
+
+read_files_pattern(eucalyptus_cluster_t, eucalyptus_conf_t, eucalyptus_conf_t)
+
+manage_files_pattern(eucalyptus_cluster_t, eucalyptus_log_t, eucalyptus_log_t)
+logging_log_filetrans(eucalyptus_cluster_t, eucalyptus_log_t, { dir file lnk_file })
+
+manage_dirs_pattern(eucalyptus_cluster_t, eucalyptus_var_lib_t, eucalyptus_var_lib_t)
+manage_files_pattern(eucalyptus_cluster_t, eucalyptus_var_lib_t, eucalyptus_var_lib_t)
+manage_lnk_files_pattern(eucalyptus_cluster_t, eucalyptus_var_lib_t, eucalyptus_var_lib_t)
+
+manage_dirs_pattern(eucalyptus_node_t, eucalyptus_var_run_t, eucalyptus_var_run_t)
+manage_files_pattern(eucalyptus_node_t, eucalyptus_var_run_t, eucalyptus_var_run_t)
+files_pid_filetrans(eucalyptus_node_t, eucalyptus_var_run_t, file)
+
+manage_files_pattern(eucalyptus_cluster_t, tmp_t, eucalyptus_tmp_t)
+files_tmp_filetrans(eucalyptus_cluster_t, eucalyptus_tmp_t, file)
+
+manage_files_pattern(eucalyptus_cluster_t, tmpfs_t, eucalyptus_tmpfs_t)
+fs_tmpfs_filetrans(eucalyptus_cluster_t, eucalyptus_tmpfs_t, file)
+
+
+kernel_read_network_state(eucalyptus_cluster_t)  # /proc/net/arp
+kernel_read_system_state(eucalyptus_cluster_t)
+
+corecmd_exec_bin(eucalyptus_cluster_t)
+
+corenet_tcp_sendrecv_generic_port(eucalyptus_cluster_t)
+corenet_tcp_connect_generic_port(eucalyptus_cluster_t)
+corenet_tcp_bind_generic_node(eucalyptus_cluster_t)
+corenet_tcp_connect_osapi_compute_port(eucalyptus_cluster_t)  # port 8774
+corenet_tcp_bind_osapi_compute_port(eucalyptus_cluster_t)  # port 8774
+corenet_tcp_connect_neutron_port(eucalyptus_cluster_t)  # port 8775
+
+dev_read_rand(eucalyptus_cluster_t)  # uuidgen
+dev_read_sysfs(eucalyptus_cluster_t)
+
+fs_getattr_tmpfs(eucalyptus_cluster_t)  # semaphores
+
+auth_read_passwd(eucalyptus_cluster_t)
+
+miscfiles_read_localization(eucalyptus_cluster_t)
+
+optional_policy(`
+    apache_exec(eucalyptus_cluster_t)
+    apache_exec_modules(eucalyptus_cluster_t)
+    apache_exec_suexec(eucalyptus_cluster_t)
+    apache_search_config(eucalyptus_cluster_t)
+')
+
+optional_policy(`
+    iptables_domtrans(eucalyptus_cluster_t)  # sensors, managed mode
+')
+
+optional_policy(`
+    sysnet_domtrans_ifconfig(eucalyptus_cluster_t)
+')
+
+########################################
+#
+# eucalyptus_node local policy
+#
+
+allow eucalyptus_node_t self:capability { chown dac_override fowner setgid setuid };
+allow eucalyptus_node_t self:process setpgid;
+dontaudit eucalyptus_node_t self:capability fsetid;
+
+allow eucalyptus_node_t self:fifo_file rw_fifo_file_perms;
+allow eucalyptus_node_t self:msgq create_msgq_perms;  # /usr/bin/pv
+allow eucalyptus_node_t self:shm create_shm_perms;  # bundle-instance
+allow eucalyptus_node_t self:tcp_socket rw_stream_socket_perms;
+allow eucalyptus_node_t self:unix_stream_socket create_stream_socket_perms;
+
+ps_process_pattern(eucalyptus_node_t, eucalyptus_eucanetd_t)
+
+list_dirs_pattern(eucalyptus_node_t, eucalyptus_conf_t, eucalyptus_conf_t)
+read_files_pattern(eucalyptus_node_t, eucalyptus_conf_t, eucalyptus_conf_t)
+
+manage_files_pattern(eucalyptus_node_t, eucalyptus_log_t, eucalyptus_log_t)
+logging_log_filetrans(eucalyptus_node_t, eucalyptus_log_t, { dir file lnk_file })
+
+manage_dirs_pattern(eucalyptus_node_t, eucalyptus_var_lib_t, eucalyptus_var_lib_t)
+manage_files_pattern(eucalyptus_node_t, eucalyptus_var_lib_t, eucalyptus_var_lib_t)
+manage_lnk_files_pattern(eucalyptus_node_t, eucalyptus_var_lib_t, eucalyptus_var_lib_t)
+files_var_lib_filetrans(eucalyptus_node_t, eucalyptus_var_lib_t, { dir file lnk_file sock_file })
+filetrans_pattern(eucalyptus_node_t, eucalyptus_var_lib_t, virt_image_t, dir, "instances")
+
+manage_dirs_pattern(eucalyptus_node_t, tmp_t, eucalyptus_tmp_t)
+manage_files_pattern(eucalyptus_node_t, tmp_t, eucalyptus_tmp_t)
+files_tmp_filetrans(eucalyptus_node_t, eucalyptus_tmp_t, { dir file })
+
+manage_files_pattern(eucalyptus_node_t, tmpfs_t, eucalyptus_tmpfs_t)
+fs_tmpfs_filetrans(eucalyptus_node_t, eucalyptus_tmpfs_t, file)
+
+manage_dirs_pattern(eucalyptus_node_t, eucalyptus_var_run_t, eucalyptus_var_run_t)
+manage_files_pattern(eucalyptus_node_t, eucalyptus_var_run_t, eucalyptus_var_run_t)
+files_pid_filetrans(eucalyptus_node_t, eucalyptus_var_run_t, file)
+
+# We (basically) need to use virt_image_t rather than our own type
+# because libvirtd applies that label when it shuts VMs off.
+manage_lnk_files_pattern(eucalyptus_node_t, virt_image_t, virt_image_t)
+delete_files_pattern(eucalyptus_node_t, virt_image_t, var_lib_t)  # libvirtd console.log relabeling
+setattr_files_pattern(eucalyptus_node_t, virt_image_t, var_lib_t)  # https://eucalyptus.atlassian.net/browse/EUCA-12085
+
+read_files_pattern(eucalyptus_node_t, dhcpd_state_t, dhcp_etc_t)  # Edge NC gates instance launches on dhcp config
+
+read_files_pattern(eucalyptus_node_t, eucalyptus_eucanetd_t, eucalyptus_eucanetd_t)  # https://eucalyptus.atlassian.net/browse/EUCA-12047
+
+
+kernel_read_network_state(eucalyptus_node_t)
+kernel_read_system_state(eucalyptus_node_t)
+
+corecmd_exec_bin(eucalyptus_node_t)
+corecmd_exec_shell(eucalyptus_node_t)  # https://eucalyptus.atlassian.net/browse/EUCA-11568
+
+corenet_tcp_sendrecv_generic_port(eucalyptus_node_t)
+corenet_tcp_connect_generic_port(eucalyptus_node_t)
+corenet_tcp_bind_generic_node(eucalyptus_node_t)
+corenet_tcp_bind_neutron_port(eucalyptus_node_t)  # port 8775
+
+dev_read_generic_blk_files(eucalyptus_node_t)  # bundle-instance
+dev_read_sysfs(eucalyptus_node_t)
+
+fs_getattr_tmpfs(eucalyptus_node_t)  # bundle-instance
+fs_getattr_xattr_fs(eucalyptus_node_t)
+fs_manage_tmpfs_sockets(eucalyptus_node_t)  # bundle-instance
+
+storage_raw_read_fixed_disk(eucalyptus_node_t)  # bundle-instance
+storage_setattr_fixed_disk_dev(eucalyptus_node_t)  # bundle-instance
+
+auth_read_passwd(eucalyptus_node_t)
+
+libs_exec_ldconfig(eucalyptus_node_t)  # bundle-instance; no idea why
+
+miscfiles_read_localization(eucalyptus_node_t)
+
+sysnet_dns_name_resolve(eucalyptus_node_t)
+
+ifdef(`hide_broken_symptoms',`
+    dontaudit eucalyptus_node_t self:process setfscreate;  # sed wants to unnecessarily relabel httpd.conf
+    dontaudit eucalyptus_node_t mount_exec_t:file getattr;  # https://eucalyptus.atlassian.net/browse/EUCA-12080
+')
+
+optional_policy(`
+    apache_exec(eucalyptus_node_t)
+    apache_exec_modules(eucalyptus_node_t)
+    apache_exec_suexec(eucalyptus_node_t)
+    apache_search_config(eucalyptus_node_t)
+')
+
+optional_policy(`
+    fstools_domtrans(eucalyptus_node_t)  # blkid
+')
+
+optional_policy(`
+    iscsid_domtrans(eucalyptus_node_t)  # connect to EBS
+')
+
+optional_policy(`
+    lvm_domtrans(eucalyptus_node_t)
+')
+
+optional_policy(`
+    udev_exec(eucalyptus_node_t)
+    udev_read_db(eucalyptus_node_t)  # use udevadm to obtain EBS volume /dev/disk/by-path/*
+')
+
+optional_policy(`
+    virt_manage_config(eucalyptus_node_t)  # migration
+    virt_manage_images(eucalyptus_node_t)
+    virt_stream_connect(eucalyptus_node_t)
+    virt_systemctl(eucalyptus_node_t)  # migration
+')
+
+########################################
+#
+# eucanetd local policy
+#
+
+allow eucalyptus_eucanetd_t self:capability { setgid setuid };
+allow eucalyptus_eucanetd_t self:capability { chown dac_override dac_read_search };  # https://eucalyptus.atlassian.net/browse/EUCA-12020
+allow eucalyptus_eucanetd_t self:process { fork setpgid signal_perms };
+allow eucalyptus_eucanetd_t self:fifo_file rw_fifo_file_perms;
+allow eucalyptus_eucanetd_t self:unix_stream_socket create_stream_socket_perms;
+
+ps_process_pattern(eucalyptus_eucanetd_t, dhcpd_t)
+
+ifdef(`hide_broken_symptoms',`
+    dontaudit dhcpd_t eucalyptus_log_t:file read_file_perms;  # https://eucalyptus.atlassian.net/browse/EUCA-12084
+    dontaudit ifconfig_t eucalyptus_log_t:file read_file_perms;  # https://eucalyptus.atlassian.net/browse/EUCA-12084
+    dontaudit iptables_t eucalyptus_log_t:file read_file_perms;  # https://eucalyptus.atlassian.net/browse/EUCA-12084
+    dontaudit netutils_t eucalyptus_log_t:file read_file_perms;  # https://eucalyptus.atlassian.net/browse/EUCA-12084
+')
+
+read_files_pattern(eucalyptus_eucanetd_t, eucalyptus_conf_t, eucalyptus_conf_t)
+
+manage_files_pattern(eucalyptus_eucanetd_t, eucalyptus_log_t, eucalyptus_log_t)
+logging_log_filetrans(eucalyptus_eucanetd_t, eucalyptus_log_t, { dir file lnk_file })
+
+manage_dirs_pattern(eucalyptus_node_t, eucalyptus_var_run_t, eucalyptus_var_run_t)
+manage_files_pattern(eucalyptus_node_t, eucalyptus_var_run_t, eucalyptus_var_run_t)
+files_pid_filetrans(eucalyptus_node_t, eucalyptus_var_run_t, file)
+
+manage_files_pattern(eucalyptus_eucanetd_t, eucalyptus_tmp_t, eucalyptus_tmp_t)
+files_tmp_filetrans(eucalyptus_eucanetd_t, eucalyptus_tmp_t, file)
+
+read_files_pattern(eucalyptus_eucanetd_t, dhcpd_state_t, dhcpd_state_t)
+delete_files_pattern(eucalyptus_eucanetd_t, dhcpd_state_t, dhcpd_state_t)
+sysnet_dhcp_state_filetrans(eucalyptus_eucanetd_t, dhcpd_state_t, file)
+
+manage_files_pattern(eucalyptus_eucanetd_t, dhcpd_state_t, dhcp_etc_t)
+filetrans_pattern(eucalyptus_eucanetd_t, dhcpd_state_t, dhcp_etc_t, file, "euca-dhcp.conf")
+
+
+kernel_read_system_state(eucalyptus_eucanetd_t)
+
+corecmd_exec_bin(eucalyptus_eucanetd_t)
+corecmd_exec_shell(eucalyptus_eucanetd_t)  # https://eucalyptus.atlassian.net/browse/EUCA-12026
+
+dev_read_sysfs(eucalyptus_eucanetd_t)
+
+sysnet_dns_name_resolve(eucalyptus_eucanetd_t)
+
+auth_read_passwd(eucalyptus_eucanetd_t)
+
+optional_policy(`
+    allow eucalyptus_eucanetd_t dhcpd_t:process sigkill;
+    dhcpd_domtrans(eucalyptus_eucanetd_t)
+')
+
+optional_policy(`
+    iptables_domtrans(eucalyptus_eucanetd_t)  # iptables, ebtables
+    read_files_pattern(iptables_t, eucalyptus_tmp_t, eucalyptus_tmp_t)
+')
+
+optional_policy(`
+    netutils_domtrans(eucalyptus_eucanetd_t)  # arping
+')
+
+optional_policy(`
+    sysnet_domtrans_ifconfig(eucalyptus_eucanetd_t)  # ifconfig
+')
