@@ -18,6 +18,7 @@ policy_module(eucalyptus, 0.1.0)
 gen_require(`
     attribute fixed_disk_raw_read;
     attribute fixed_disk_raw_write;
+    type cyphesis_port_t;
     type device_t;
     type dhcp_etc_t;
     type dhcpd_state_t;
@@ -94,7 +95,7 @@ allow eucalyptus_cloud_t self:capability { chown fowner kill net_raw setgid setu
 allow eucalyptus_cloud_t self:process { execmem setcap setpgid setrlimit };  # execmem is for java
 allow eucalyptus_cloud_t self:netlink_route_socket create_netlink_socket_perms;
 allow eucalyptus_cloud_t self:rawip_socket create_socket_perms;
-allow eucalyptus_cloud_t self:tcp_socket create_stream_socket_perms;
+allow eucalyptus_cloud_t self:tcp_socket { create_stream_socket_perms name_connect };
 allow eucalyptus_cloud_t self:udp_socket create_socket_perms;
 allow eucalyptus_cloud_t self:unix_stream_socket connectto;  # pg_ctl
 
@@ -145,6 +146,7 @@ corenet_udp_bind_generic_port(eucalyptus_cloud_t)
 corenet_tcp_bind_dns_port(eucalyptus_cloud_t)
 corenet_udp_bind_dns_port(eucalyptus_cloud_t)
 corenet_tcp_connect_osapi_compute_port(eucalyptus_cloud_t)  # port 8774
+corenet_tcp_connect_cyphesis_port(eucalyptus_cloud_t)
 
 dev_read_rand(eucalyptus_cloud_t)
 dev_read_sysfs(eucalyptus_cloud_t)  # /sys/device/system/cpu
@@ -208,6 +210,9 @@ allow eucalyptus_cluster_t self:netlink_route_socket create_netlink_socket_perms
 allow eucalyptus_cluster_t self:sem create_sem_perms;
 allow eucalyptus_cluster_t self:tcp_socket create_stream_socket_perms;
 allow eucalyptus_cluster_t self:udp_socket create_socket_perms;
+allow eucalyptus_cluster_t self:dir search;
+allow eucalyptus_cluster_t self:file { write open };
+
 
 dontaudit eucalyptus_cluster_t self:process setfscreate;  # sed wants to unnecessarily relabel httpd.conf
 dontaudit eucalyptus_cluster_t fsadm_exec_t:file getattr;  # https://eucalyptus.atlassian.net/browse/EUCA-12148
@@ -318,6 +323,7 @@ read_files_pattern(eucalyptus_node_t, dhcpd_state_t, dhcp_etc_t)  # Edge NC gate
 
 read_files_pattern(eucalyptus_node_t, eucalyptus_eucanetd_t, eucalyptus_eucanetd_t)  # https://eucalyptus.atlassian.net/browse/EUCA-12047
 
+write_files_pattern(eucalyptus_cluster_t, eucalyptus_var_run_t, eucalyptus_var_run_t)
 
 kernel_read_network_state(eucalyptus_node_t)
 kernel_read_system_state(eucalyptus_node_t)
@@ -394,6 +400,8 @@ allow eucalyptus_eucanetd_t self:capability { chown dac_override dac_read_search
 allow eucalyptus_eucanetd_t self:process { fork setpgid signal_perms };
 allow eucalyptus_eucanetd_t self:fifo_file rw_fifo_file_perms;
 allow eucalyptus_eucanetd_t self:unix_stream_socket create_stream_socket_perms;
+allow eucalyptus_eucanetd_t self:file { rename setattr read create write getattr unlink open };
+allow eucalyptus_eucanetd_t self:dir { write remove_name add_name };
 
 ps_process_pattern(eucalyptus_eucanetd_t, dhcpd_t)
 
@@ -422,6 +430,8 @@ sysnet_dhcp_state_filetrans(eucalyptus_eucanetd_t, dhcpd_state_t, file)
 
 manage_files_pattern(eucalyptus_eucanetd_t, dhcpd_state_t, dhcp_etc_t)
 filetrans_pattern(eucalyptus_eucanetd_t, dhcpd_state_t, dhcp_etc_t, file, "euca-dhcp.conf")
+
+manage_files_pattern(eucalyptus_eucanetd_t, eucalyptus_var_run_t, eucalyptus_var_run_t)
 
 
 kernel_read_system_state(eucalyptus_eucanetd_t)
